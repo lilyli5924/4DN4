@@ -33,7 +33,7 @@ class Server:
     # Set the server hostname used to define the server socket address
     # binding. Note that 0.0.0.0 or "" serves as INADDR_ANY. i.e.,
     # bind to all local network interface addresses.
-    HOSTNAME = "0.0.0.0"
+    HOSTNAME = "192.168.0.168"
     
     # Set the server port to bind the listen socket to.
     PORT = 50000
@@ -168,7 +168,7 @@ class Client:
     # are running on the same machine, we can use the current
     # hostname.
 #    SERVER_HOSTNAME = socket.gethostbyname('localhost')
-    SERVER_HOSTNAME = socket.gethostbyname('')
+    SERVER_HOSTNAME = socket.gethostbyname("192.168.0.168")
 #    SERVER_HOSTNAME = 'localhost'
 
     RECV_BUFFER_SIZE = 1024
