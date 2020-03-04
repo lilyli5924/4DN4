@@ -33,14 +33,11 @@ FILE_SIZE_FIELD_LEN  = 24 # 24 byte file size field.
 # be a 1-byte integer. For now, we only define the "GET" command,
 # which tells the server to send a file.
 CMD = {
-    "GET" : 1,
-    "PUT" : 2
+    "GET" : 2
 }
 
-MSG_ENCODING = "utf-8"
 CURRENT_DIR = os.getcwd()
-#MY_REMOTE_DIR = os.chdir('./Remote')
-#MY_LOCAL_DIR = os.chdir('../Local')
+
 ########################################################################
 # Echo Server class
 ########################################################################
@@ -49,7 +46,7 @@ class Server: #Receiver
 
     RECV_SIZE = 1024
 
-    HOST = "192.168.2.175"
+    HOST = "0.0.0.0"
     BROADCAST_PORT = 30000
     ADDRESS_PORT = (HOST, BROADCAST_PORT)
     
@@ -63,7 +60,7 @@ class Server: #Receiver
     
         
    # # This is the file that the client will request using a GET.
-   # REMOTE_FILE_NAME = "remotefile.txt"
+    REMOTE_FILE_NAME = "remotefile.txt"
    # # Get the file size
    # REMOTE_FILE_SIZE = os.path.getsize(REMOTE_FILE_NAME)
     
@@ -146,6 +143,48 @@ class Server: #Receiver
             self.socket.close()
             sys.exit(1)
 
+    def get_file_handler(self, connection):
+        # Read the command and see if it is a GET.
+        cmd = int.from_bytes(connection.recv(CMD_FIELD_LEN), byteorder='big')
+        if cmd != CMD["GET"]:
+            print("GET command not received!")
+            return
+
+        # The command is good. Now read and decode the requested
+        # filename.
+        filename_bytes = connection.recv(Server.RECV_SIZE)
+        filename = filename_bytes.decode(Server.MSG_ENCODING)
+
+        # Open the requested file and get set to send it to the
+        # client.
+        try:
+            file = open(filename, 'r').read()
+        except FileNotFoundError:
+            print(Server.FILE_NOT_FOUND_MSG)
+            connection.close()                   
+            return
+
+        # Encode the file contents into bytes, record its size and
+        # generate the file size field used for transmission.
+        file_bytes = file.encode(Server.MSG_ENCODING)
+        file_size_bytes = len(file_bytes)
+        file_size_field = file_size_bytes.to_bytes(FILE_SIZE_FIELD_LEN, byteorder='big')
+        
+        # Create the packet to be sent with the header field.
+        pkt = file_size_field + file_bytes
+        
+        try:
+            # Send the packet to the connected client.
+            connection.sendall(pkt)
+            # print("Sent packet bytes: \n", pkt)
+            print("Sending file: ", Server.REMOTE_FILE_NAME)
+        except socket.error:
+            # If the client has closed the connection, close the
+            # socket on this end.
+            print("Closing client connection ...")
+            connection.close()
+            return
+
     def connection_handler(self, client):
         connection, address_port = client
         print("-" * 72)
@@ -170,63 +209,37 @@ class Server: #Receiver
                 # Decode the received bytes back into strings. Then output
                 # them.
                 recvd_str = recvd_bytes.decode(Server.MSG_ENCODING)
+
                 if (recvd_str == "rlist"):
                     listing = os.listdir(CURRENT_DIR)
 
                     for entry in listing:
                         if os.path.isfile(entry):
                             print(entry)
-                #print("Received: ", recvd_str)
                 
-                # Send the received bytes back to the client.
-                connection.sendall(recvd_bytes)
-                print("Sent: ", recvd_str)
+                    # Send the received bytes back to the client.
+                    connection.sendall(recvd_bytes)
+                    #print("Sent: ", recvd_str)
+                
+                if (recvd_str == "get"):
+                    self.get_file_handler(connection)
+                    connection.sendall(recvd_bytes)
+                
+                if (recvd_str == "llist"):
+                    connection.sendall(recvd_bytes)
+
+            
+            # Outside of get_file operation
+            # Send the received bytes back to the client.
+            #connection.sendall(recvd_bytes)
+            #print("Sent: ", recvd_str)
 
             except KeyboardInterrupt:
                 print()
                 print("Closing client connection ... ")
                 connection.close()
                 break
-        # Read the command and see if it is a GET.
-        cmd = int.from_bytes(connection.recv(CMD_FIELD_LEN), byteorder='big')
-        if cmd != CMD["GET"]:
-            print("GET command not received!")
-            return
-
-        # The command is good. Now read and decode the requested
-        # filename.
-        filename_bytes = connection.recv(Server.RECV_SIZE)
-        filename = filename_bytes.decode(MSG_ENCODING)
-
-        # Open the requested file and get set to send it to the
-        # client.
-        try:
-            file = open(filename, 'r').read()
-        except FileNotFoundError:
-            print(Server.FILE_NOT_FOUND_MSG)
-            connection.close()                   
-            return
-
-        # Encode the file contents into bytes, record its size and
-        # generate the file size field used for transmission.
-        file_bytes = file.encode(MSG_ENCODING)
-        file_size_bytes = len(file_bytes)
-        file_size_field = file_size_bytes.to_bytes(FILE_SIZE_FIELD_LEN, byteorder='big')
-
-        # Create the packet to be sent with the header field.
-        pkt = file_size_field + file_bytes
         
-        try:
-            # Send the packet to the connected client.
-            connection.sendall(pkt)
-            # print("Sent packet bytes: \n", pkt)
-            print("Sending file: ", Server.REMOTE_FILE_NAME)
-        except socket.error:
-            # If the client has closed the connection, close the
-            # socket on this end.
-            print("Closing client connection ...")
-            connection.close()
-            return
 ########################################################################
 # Echo Client class
 ########################################################################
@@ -235,7 +248,7 @@ class Client: #Sender
 
     # HOSTNAME = socket.gethostbyname('')
     # HOSTNAME = 'localhost'
-    HOSTNAME = '192.168.2.175'
+    HOSTNAME = '0.0.0.0'
 
     # Send the broadcast packet periodically. Set the period
     # (seconds).
@@ -257,6 +270,8 @@ class Client: #Sender
     TCP_PORT = 60000 
     #SERVER_ADDRESS_PORT = ('localhost', Server.PORT)
     RECV_SIZE = 1024
+
+    LOCAL_FILE_NAME = "localfile.txt"
 
     def __init__(self):
         self.create_sender_socket()
@@ -373,8 +388,12 @@ class Client: #Sender
         while True:
             try:
                 self.get_console_input()
-                self.connection_send()
-                self.connection_receive()
+                if (self.input_text == "get"):
+                    self.connection_send()
+                    self.get_file()
+                else:
+                    self.connection_send()
+                    self.connection_receive()
             except (KeyboardInterrupt, EOFError):
                 print()
                 print("Closing server connection ...")
@@ -410,6 +429,58 @@ class Client: #Sender
         except Exception as msg:
             print(msg)
             sys.exit(1)
+    
+    def socket_recv_size(self, length):
+        bytes = self.socket.recv(length)
+        if len(bytes) < length:
+            self.socket.close()
+            exit()
+        return(bytes)
+
+    def get_file(self):
+
+        # Create the packet GET field.
+        get_field = CMD["GET"].to_bytes(CMD_FIELD_LEN, byteorder='big')
+
+        # Create the packet filename field.
+        filename_field = Server.REMOTE_FILE_NAME.encode('utf-8')
+
+        # Create the packet.
+        pkt = get_field + filename_field
+
+        # Send the request packet to the server.
+        self.socket.sendall(pkt)
+
+        # Read the file size field.
+        file_size_bytes = self.socket_recv_size(FILE_SIZE_FIELD_LEN)
+        if len(file_size_bytes) == 0:
+               self.socket.close()
+               return
+
+        # Make sure that you interpret it in host byte order.
+        file_size = int.from_bytes(file_size_bytes, byteorder='big')
+
+        # Receive the file itself.
+        recvd_bytes_total = bytearray()
+        try:
+            # Keep doing recv until the entire file is downloaded. 
+            while len(recvd_bytes_total) < file_size:
+                recvd_bytes_total += self.socket.recv(Client.RECV_SIZE)
+
+            # Create a file using the received filename and store the
+            # data.
+            print("Received {} bytes. Creating file: {}" \
+                  .format(len(recvd_bytes_total), Client.LOCAL_FILE_NAME))
+
+            with open(Client.LOCAL_FILE_NAME, 'w') as f:
+                f.write(recvd_bytes_total.decode(Server.MSG_ENCODING))
+        except KeyboardInterrupt:
+            print()
+            exit(1)
+        # If the socket has been closed by the server, break out
+        # and close it on this end.
+        except socket.error:
+            self.socket.close()
 
 ########################################################################
 # Process command line arguments if run directly.
@@ -428,9 +499,3 @@ if __name__ == '__main__':
     roles[args.role]()
 
 ########################################################################
-
-
-
-
-
-
