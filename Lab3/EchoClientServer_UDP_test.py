@@ -7,6 +7,7 @@ import argparse
 import sys
 import time
 import os
+import json
 
 ########################################################################
 
@@ -94,11 +95,9 @@ class Server: #Receiver
                 if (data.decode('utf-8') == "Service Discovery"):
                     print("-" * 72)
                     print("Message received from {}.".format(address))
-                    msg_bytes = "Lily and Sarah's File Sharing Service"
                     # time.sleep(20) # for attacker.
 
                     # Echo the received bytes back to the sender.
-                    print("address is " + str(address))
                     self.socket.sendto("Lily and Sarah's File Sharing Service".encode('utf-8'), address)
                     self.create_listen_socket()
                     self.process_connections_forever()
@@ -176,8 +175,7 @@ class Server: #Receiver
 
     def connection_handler(self, client):
         connection, address_port = client
-        print("-" * 72)
-        print("Connection received from {}.".format(address_port))
+        print("Connection received from {ip_addr} on port {port_num}.".format(ip_addr = address_port[0], port_num = address_port[1]))
 
         while True:
             try:
@@ -198,7 +196,6 @@ class Server: #Receiver
                 # Decode the received bytes back into strings. Then output
                 # them.
                 recvd_str = recvd_bytes.decode(Server.MSG_ENCODING)
-                print("Received: ", recvd_str)
 
                 if (recvd_str == "rlist" or recvd_str == "llist"):
                     if (recvd_str == "rlist"):
@@ -208,11 +205,10 @@ class Server: #Receiver
                             if os.path.isfile(entry):
                                 print(entry) 
                     else:
-                        print("skip") 
+                        pass
                     
                     # Send the received bytes back to the client.
-                    connection.sendall(recvd_bytes)
-                    print("Sent: ", recvd_str)            
+                    connection.sendall(recvd_bytes)          
                 
                 else:  
                     # Spliting the command field and data field
@@ -231,7 +227,15 @@ class Server: #Receiver
                             f.write(recvd_bytes_1.decode(Server.MSG_ENCODING))
                         
                         print("Finished written.")
-                        connection.sendall(recvd_bytes)
+                        
+                        # List the remote file directory
+                        dir_list = []
+                        listing_1 = os.listdir(CURRENT_DIR)
+                        for entry in listing_1:
+                            if os.path.isfile(entry):
+                                dir_list.append(entry)
+                        serial_list = json.dumps(dir_list)
+                        connection.sendall(serial_list.encode(Server.MSG_ENCODING))
 
                     else:
                         self.get_file_handler(connection,recvd_bytes_1)
@@ -275,11 +279,17 @@ class Client: #Sender
     RECV_SIZE = 1024
 
     LOCAL_FILE_NAME = "localfile.txt"
-    LOCAL_FILE_NAME_1 = "localfile_1.txt"
+    #LOCAL_FILE_NAME_1 = "localfile_1.txt"
 
     def __init__(self):
         self.create_sender_socket()
         self.send_broadcasts_forever()
+
+    def get_file_entry(self):
+        listing = os.listdir(CURRENT_DIR)
+        for entry in listing:
+            if os.path.isfile(entry):
+                print(entry)
 
     def create_sender_socket(self):
         try:
@@ -344,10 +354,10 @@ class Client: #Sender
             # sender.
             recvd_bytes, address = self.socket.recvfrom(Client.RECV_SIZE)
             # print("Received Message Bytes: ", recvd_bytes)
-            print("Received Message: ", recvd_bytes.decode(Server.MSG_ENCODING))
-            self.get_tcp_socket()
-            self.connect_to_server()
-            self.send_console_input_forever()
+            if (recvd_bytes.decode(Server.MSG_ENCODING) == "Lily and Sarah's File Sharing Service"):
+                print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
+                self.get_tcp_socket()
+                self.send_console_input_forever()
         except Exception as msg:
             print(msg)
             sys.exit(1)
@@ -377,10 +387,7 @@ class Client: #Sender
         while True:
             self.input_text = input("Input: ")
             if (self.input_text == "llist"):
-                    listing = os.listdir(CURRENT_DIR)
-                    for entry in listing:
-                        if os.path.isfile(entry):
-                            print(entry)
+                self.get_file_entry()
             if self.input_text != "":
                 break
 
@@ -388,14 +395,16 @@ class Client: #Sender
         while True:
             try:
                 self.get_console_input()
-                if (self.input_text == "get"):
+                self.input_id = self.input_text.split(" ")
+                # print("input_id is " + str(self.input_id))
+                if (self.input_id[0] == "connect"):
+                    self.connect_to_server()
+                elif (self.input_id[0] == "get"):
                     self.get_file()
-                if (self.input_text == "put"):
+                elif (self.input_id[0] == "put"):
                     self.put_file()
-                if (self.input_text == "rlist"):
-                    self.connection_send()
                     self.connection_receive()
-                if (self.input_text == "llist"):
+                else:
                     self.connection_send()
                     self.connection_receive()
             except (KeyboardInterrupt, EOFError):
@@ -408,7 +417,7 @@ class Client: #Sender
         try:
             # Send string objects over the connection. The string must
             # be encoded into bytes objects first.
-            self.socket.sendall(self.input_text.encode(Server.MSG_ENCODING))
+            self.socket.sendall(self.input_id[0].encode(Server.MSG_ENCODING))
         except Exception as msg:
             print(msg)
             sys.exit(1)
@@ -428,7 +437,8 @@ class Client: #Sender
                 self.socket.close()
                 sys.exit(1)
 
-            print("Received: ", recvd_bytes.decode(Server.MSG_ENCODING))
+            recvd_list = recvd_bytes.decode(Server.MSG_ENCODING)
+            print(recvd_list)
 
         except Exception as msg:
             print(msg)
@@ -447,7 +457,7 @@ class Client: #Sender
         get_field = CMD["GET"].to_bytes(CMD_FIELD_LEN, byteorder='big')
 
         # Create the packet filename field.
-        filename_field = Server.REMOTE_FILE_NAME.encode('utf-8')
+        filename_field = self.input_id[1].encode('utf-8')
 
         # Create the packet.
         pkt = get_field + filename_field
@@ -478,6 +488,10 @@ class Client: #Sender
 
             with open(Client.LOCAL_FILE_NAME, 'w') as f:
                 f.write(recvd_bytes_total.decode(Server.MSG_ENCODING))
+            
+            # List the local file directory
+            self.get_file_entry()
+
         except KeyboardInterrupt:
             print()
             exit(1)
@@ -490,7 +504,7 @@ class Client: #Sender
         put_field = CMD["PUT"].to_bytes(CMD_FIELD_LEN, byteorder='big')
 
         try:
-            file = open(Client.LOCAL_FILE_NAME_1, 'r').read()
+            file = open(self.input_id[1], 'r').read()
         except FileNotFoundError:
             print(Client.FILE_NOT_FOUND_MSG)   
             self.socket.close()    
@@ -505,7 +519,7 @@ class Client: #Sender
         
         try:
             self.socket.sendall(pkt)
-            print("Sending file: ", Client.LOCAL_FILE_NAME_1)
+            print("Sending file: ", self.input_id[1])
         except socket.error:
             print("Closing Server connection ...")
             self.socket.close()
