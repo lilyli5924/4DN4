@@ -71,6 +71,10 @@ class Server: #Receiver
    # REMOTE_FILE_SIZE = os.path.getsize(REMOTE_FILE_NAME)
     
     def __init__(self):
+        listing = os.listdir(CURRENT_DIR)
+        for entry in listing:
+            if os.path.isfile(entry):
+                print(entry)
         self.get_socket() #UDP
         self.receive_forever() #UDP
     
@@ -271,6 +275,12 @@ class Client: #Sender
 
     FILE_NOT_FOUND_MSG = "Error: Requested file is not available!"
 
+    SCAN_CYCLES = 3
+    SCAN_TIMEOUT = 5
+    
+    SCAN_CMD = "SCAN"
+    SCAN_CMD_ENCODED = SCAN_CMD.encode(MSG_ENCODING)
+    
     # Use the broadcast-to-everyone IP address or a directed broadcast
     # address. Define a broadcast port.
     BROADCAST_ADDRESS = "255.255.255.255" 
@@ -316,8 +326,9 @@ class Client: #Sender
                 print("Sending to {} ...".format(Client.ADDRESS_PORT))
                 self.socket.sendto(Client.MESSAGE_ENCODED, Client.ADDRESS_PORT)
                 time.sleep(Client.BROADCAST_PERIOD)
+                self.scan_for_service()
 
-                self.message_receive()
+                #self.message_receive()
 
         except Exception as msg:
             print(msg)
@@ -338,6 +349,55 @@ class Client: #Sender
         except Exception as msg:
             print(msg)
             sys.exit(1)
+    
+    def scan_for_service(self):
+        # Collect our scan results in a list.
+        scan_results = []
+
+        # Repeat the scan procedure a preset number of times.
+        for i in range(Client.SCAN_CYCLES):
+
+            # Send a service discovery broadcast.
+            print("Sending broadcast scan {}".format(i))            
+            #self.socket.sendto(Client.SCAN_CMD_ENCODED, Client.ADDRESS_PORT)
+            #time.sleep(Client.BROADCAST_PERIOD)
+        
+            while True:
+                # Listen for service responses. So long as we keep
+                # receiving responses, keep going. Timeout if none are
+                # received and terminate the listening for this scan
+                # cycle.
+                try:
+                    recvd_bytes, address = self.socket.recvfrom(Client.RECV_SIZE)
+                    recvd_msg = recvd_bytes.decode(Client.MSG_ENCODING)
+
+                    # Record only unique services that are found.
+                    if (recvd_msg) not in scan_results:
+                        scan_results.append((recvd_msg))
+                        if (scan_results[i] == "Lily and Sarah's File Sharing Service"):
+                            print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
+                            self.get_tcp_socket()
+                            self.send_console_input_forever()
+                        else:
+                            print("No services found.")    
+                        continue
+                # If we timeout listening for a new response, we are
+                # finished.
+                except socket.timeout:
+                    break
+
+       # # Output all of our scan results, if any.
+       # print(scan_results)
+       # if (scan_results):
+       #     print("hello")
+       #     for result in scan_results:
+       #         print(result)
+       #         if (result == "Lily and Sarah's File Sharing Service"):
+       #             print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
+       #             self.get_tcp_socket()
+       #             self.send_console_input_forever()
+       # else:
+       #     print("No services found.")
     
     def send_console_input_forever(self):
         print("hello!")
