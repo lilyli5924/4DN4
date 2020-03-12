@@ -8,6 +8,7 @@ import sys
 import time
 import os
 import json
+import threading
 
 ########################################################################
 
@@ -51,13 +52,14 @@ class Server: #Receiver
 
     RECV_CMD = 1
 
-    HOST = "0.0.0.0"
-    BROADCAST_PORT = 30000
+    #HOST = "0.0.0.0"
+    HOST = "192.168.0.168"
+    BROADCAST_PORT = 30002
     ADDRESS_PORT = (HOST, BROADCAST_PORT)
     
     MSG_ENCODING = "utf-8"
 
-    TCP_PORT = 50000
+    TCP_PORT = 50002
     SOCKET_TCP_ADDRESS = (HOST, TCP_PORT)
     MAX_CONNECTION_BACKLOG = 20
     
@@ -85,6 +87,7 @@ class Server: #Receiver
 
             # Bind to all interfaces and the agreed on broadcast port.
             self.socket.bind(Server.ADDRESS_PORT)
+            #self.socket.setblocking(False)
             print("Listening for service discovery messages on SDP port {port_num}".format(port_num = Server.ADDRESS_PORT[1]))
         except Exception as msg:
             print(msg)
@@ -93,6 +96,7 @@ class Server: #Receiver
     def receive_forever(self):
         while True:
             try:
+                print("HELLO")
                 data, address = self.socket.recvfrom(Server.RECV_SIZE)
                 print("Broadcast received: ", 
                       data.decode('utf-8'), address)
@@ -124,6 +128,8 @@ class Server: #Receiver
             # Bind socket to socket address, i.e., IP address and port.
             self.socket.bind(Server.SOCKET_TCP_ADDRESS)
 
+            # Set the (listen) socket to non-blocking mode
+            #self.socket.setblocking(False)
             # Set socket to listen state.
             self.socket.listen(Server.MAX_CONNECTION_BACKLOG)
             print("Listening for file sharing connections on port {}".format(Server.TCP_PORT))
@@ -260,10 +266,10 @@ class Server: #Receiver
 
 class Client: #Sender
 
-    # HOSTNAME = socket.gethostbyname('')
+    HOSTNAME = socket.gethostbyname("192.168.0.175")
     # HOSTNAME = 'localhost'
-    HOSTNAME = '0.0.0.0'
-
+    #HOSTNAME = '0.0.0.0'
+    #HOSTNAME = '192.168.0.168'
     # Send the broadcast packet periodically. Set the period
     # (seconds).
     BROADCAST_PERIOD = 2
@@ -283,13 +289,15 @@ class Client: #Sender
     
     # Use the broadcast-to-everyone IP address or a directed broadcast
     # address. Define a broadcast port.
-    BROADCAST_ADDRESS = "255.255.255.255" 
-
-    BROADCAST_PORT = 30000
+    
+    BROADCAST_ADDRESS = socket.gethostbyname("192.168.0.255") 
+    #BROADCAST_ADDRESS = "192.168.0.255"
+    
+    BROADCAST_PORT = 30002
     ADDRESS_PORT = (BROADCAST_ADDRESS, BROADCAST_PORT)
 
-    UDP_PORT = 40000
-    TCP_PORT = 60000 
+    UDP_PORT = 40002
+    TCP_PORT = 60002 
     RECV_SIZE = 1024
 
     LOCAL_FILE_NAME = "localfile.txt"
@@ -437,7 +445,7 @@ class Client: #Sender
     def connect_to_server(self):
         try:
             # Connect to the server using its socket address tuple.
-            self.socket.connect((Client.HOSTNAME, Server.TCP_PORT))
+            self.socket.connect((Server.HOST, Server.TCP_PORT))
         except Exception as msg:
             print(msg)
             sys.exit(1)
