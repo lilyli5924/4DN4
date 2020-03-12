@@ -323,9 +323,7 @@ class Client: #Sender
     def send_broadcasts_forever(self):
         try:
             while True:
-                print("Sending to {} ...".format(Client.ADDRESS_PORT))
-                self.socket.sendto(Client.MESSAGE_ENCODED, Client.ADDRESS_PORT)
-                time.sleep(Client.BROADCAST_PERIOD)
+                self.get_socket()
                 self.scan_for_service()
 
                 #self.message_receive()
@@ -345,6 +343,13 @@ class Client: #Sender
 
             # Set socket layer socket options.
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            
+            # Arrange to send a broadcast service discovery packet.
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            # Set the socket for a socket.timeout if a scanning recv
+            # fails.
+            self.socket.settimeout(Client.SCAN_TIMEOUT)
 
         except Exception as msg:
             print(msg)
@@ -358,9 +363,9 @@ class Client: #Sender
         for i in range(Client.SCAN_CYCLES):
 
             # Send a service discovery broadcast.
-            print("Sending broadcast scan {}".format(i))            
-            #self.socket.sendto(Client.SCAN_CMD_ENCODED, Client.ADDRESS_PORT)
-            #time.sleep(Client.BROADCAST_PERIOD)
+            print("Sending to {} ...".format(Client.ADDRESS_PORT))
+            self.socket.sendto(Client.MESSAGE_ENCODED, Client.ADDRESS_PORT)
+            time.sleep(Client.BROADCAST_PERIOD)
         
             while True:
                 # Listen for service responses. So long as we keep
@@ -374,30 +379,22 @@ class Client: #Sender
                     # Record only unique services that are found.
                     if (recvd_msg) not in scan_results:
                         scan_results.append((recvd_msg))
-                        if (scan_results[i] == "Lily and Sarah's File Sharing Service"):
-                            print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
-                            self.get_tcp_socket()
-                            self.send_console_input_forever()
-                        else:
-                            print("No services found.")    
                         continue
                 # If we timeout listening for a new response, we are
                 # finished.
                 except socket.timeout:
                     break
 
-       # # Output all of our scan results, if any.
-       # print(scan_results)
-       # if (scan_results):
-       #     print("hello")
-       #     for result in scan_results:
-       #         print(result)
-       #         if (result == "Lily and Sarah's File Sharing Service"):
-       #             print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
-       #             self.get_tcp_socket()
-       #             self.send_console_input_forever()
-       # else:
-       #     print("No services found.")
+        # Output all of our scan results, if any.
+        if (scan_results):
+            for result in scan_results:
+                print(result)
+                if (result == "Lily and Sarah's File Sharing Service"):
+                    print("Lily and Sarah's File Sharing Service found at {ip_addr} on port {port_num}.".format(ip_addr = address[0], port_num = address[1]))
+                    self.get_tcp_socket()
+                    self.send_console_input_forever()
+        else:
+            print("No services found.")
     
     def send_console_input_forever(self):
         print("hello!")
