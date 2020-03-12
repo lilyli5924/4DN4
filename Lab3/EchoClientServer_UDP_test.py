@@ -192,11 +192,15 @@ class Server: #Receiver
                     print("Closing client connection ... ")
                     connection.close()
                     break
-                
                 # Decode the received bytes back into strings. Then output
                 # them.
                 recvd_str = recvd_bytes.decode(Server.MSG_ENCODING)
 
+                if(recvd_str == "bye"):
+                    print("Closing client connection ...")
+                    connection.close()
+                    break
+                
                 if (recvd_str == "rlist" or recvd_str == "llist"):
                     if (recvd_str == "rlist"):
                         listing = os.listdir(CURRENT_DIR)
