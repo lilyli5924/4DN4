@@ -73,6 +73,16 @@ class Client:
                     print("Sending makeroom information\n")
                     makeroom_info = json.dumps(input_id) # to transform data into a series of bytes
                     self.socket.sendto(makeroom_info.encode("utf-8"), MULTICAST_ADDRESS_PORT)
+                elif(input_id[0] == "name"):
+                    print("User chat name sent\n")
+                    username_info = json.dumps(input_id)
+                    self.username = input_id[1]
+                    self.socket.sendto(username_info.encode("utf-8"), MULTICAST_ADDRESS_PORT)
+                elif(input_id[0] == "chat"):
+                    print ("Chat request sent\n")
+                    chat_info = json.dumps(input_id)
+                    self.socket.sendto(chat_info.encode("utf-8"), MULTICAST_ADDRESS_PORT)
+                    self.connection_receive()
                 time.sleep(Client.TIMEOUT)
         except Exception as msg:
             print(msg)
@@ -82,6 +92,31 @@ class Client:
             self.socket.close()
             sys.exit(1)
 
+    def connection_receive(self):
+        try:
+            # Receive and print out text. The received bytes objects
+            # must be decoded into string objects.
+            recvd_bytes, address = self.socket.recvfrom(Client.RECV_SIZE)
+            recvd_bytes_decoded = json.loads(recvd_bytes)
+            # recv will block if nothing is available. If we receive
+            # zero bytes, the connection has been closed from the
+            # other end. In that case, close the connection on this
+            # end and exit.
+            if len(recvd_bytes) == 0:
+                print("Closing server connection ... ")
+                self.socket.close()
+                sys.exit(1)
+
+            print(recvd_bytes_decoded)
+        
+            while True:
+                sendmsg = input("Message to send: \n")
+                message = self.username + ": " + sendmsg
+                print (message)
+                #self.socket.sendto(message.encode("utf-8"), MULTICAST_ADDRESS_PORT)
+        except Exception as msg:
+            print(msg)
+            sys.exit(1)
 ########################################################################
 # Echo Server class
 ########################################################################
@@ -150,6 +185,15 @@ class Server:
                     print("Make Room:", data_decoded)
                     self.list_of_chatrooms.append(data_decoded[1:])
                     print(self.list_of_chatrooms)
+                elif(data_decoded[0] == "name"):
+                    print("Username added. Please specify chat room you want to enter.")
+                elif(data_decoded[0] == "chat"):
+                    for items in self.list_of_chatrooms:
+                        if(data_decoded[1] == items[0]):
+                            chat_addr = json.dumps(items[1:])
+                            print("Chat request approved.\n")
+                            break
+                    self.socket.sendto(chat_addr.encode("utf-8"), address_port)
             except KeyboardInterrupt:
                 print(); exit()
             except Exception as msg:
