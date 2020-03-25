@@ -110,11 +110,6 @@ class Server:
                     self.list_of_chatrooms.append(recvd_str[1:])
                     print(self.list_of_chatrooms)
                     connection.sendall(recvd_bytes)
-
-                elif (recvd_str[0] == "name"):
-                    print("Username added. Please specify chat room you want to enter.")
-                    connection.sendall(recvd_bytes)
-
                 elif (recvd_str[0] == "getdir"):
                     print("getdir request approved.")
                     chat_addr = [] 
@@ -125,7 +120,6 @@ class Server:
                     # Send the received bytes back to the client.
                     serial_chat_addr = json.dumps(chat_addr)
                     connection.sendall(serial_chat_addr.encode("utf-8"))
-
                 elif (recvd_str[0] == "deleteroom"):
                     for items in self.list_of_chatrooms:
                         if(items[0] == recvd_str[1]):
@@ -184,6 +178,58 @@ class Client:
             if self.input_text != '':
                 break
     
+    def create_udp_send_socket(self):
+        try:
+            self.s_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            #self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            self.s_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, Client.TTL_BYTE)
+            # self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, Client.TTL)  # this works fine too
+            # self.socket.bind(("192.168.2.37", 0))  # This line may be needed.
+        except Exception as msg:
+            print(msg)
+            sys.exit(1)
+    
+    def create_udp_recv_socket(self, address_bport):
+        try:
+            self.r_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.r_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
+            # Bind to an address/port. In multicast, this is viewed as
+            # a "filter" that determines what packets make it to the
+            # UDP app.
+            bind_address = (Client.SERVER_HOSTNAME, address_bport[1])
+            self.r_socket.bind(bind_address)
+            print("Chat Room Directory Server listening on port ", address_bport[1])
+            ############################################################
+            # The multicast_request must contain a bytes object
+            # consisting of 8 bytes. The first 4 bytes are the
+            # multicast group address. The second 4 bytes are the
+            # interface address to be used. An all zeros I/F address
+            # means all network interfaces.
+            ############################################################
+                        
+            multicast_group_bytes = socket.inet_aton(address_bport[0])
+
+            print("Multicast Group: ", address_bport[0])
+
+            # Set up the interface to be used.
+            multicast_if_bytes = socket.inet_aton(RX_IFACE_ADDRESS)
+
+            # Form the multicast request.
+            multicast_request = multicast_group_bytes + multicast_if_bytes
+
+            # You can use struct.pack to create the request, but it is more complicated, e.g.,
+            # 'struct.pack("<4sl", multicast_group_bytes,
+            # int.from_bytes(multicast_if_bytes, byteorder='little'))'
+            # or 'struct.pack("<4sl", multicast_group_bytes, socket.INADDR_ANY)'
+
+            # Issue the Multicast IP Add Membership request.
+            print("Adding membership (address/interface): ", address_bport[0],"/", RX_IFACE_ADDRESS)
+            self.r_socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, multicast_request)
+        except Exception as msg:
+            print(msg)
+            sys.exit(1)
+    
     def send_console_input_forever(self):
         while True:
             try:
@@ -199,11 +245,8 @@ class Client:
                     self.connection_send(makeroom_info)
                     self.connection_receive(input_id)
                 elif(input_id[0] == "name"):
-                    print("User chat name sent")
-                    username_info = json.dumps(input_id)
+                    print("User chat name is set")
                     self.username = input_id[1]
-                    self.connection_send(username_info)
-                    self.connection_receive(input_id)
                 elif(input_id[0] == "getdir"):
                     getdir_info = json.dumps(input_id)
                     self.connection_send(getdir_info)
@@ -217,17 +260,58 @@ class Client:
                     self.connection_send(del_info)
                     self.connection_receive(input_id)
                 elif(input_id[0] == "chat"):
-                    # print ("Chat request sent\n")
-                    # chat_info = json.dumps(input_id)
-                    # self.connection_send(chat_info)
-                    # self.connection_receive(input_id)
-                    pass
-
+                    for item in self.chatroom_list:
+                        if (input_id[1] == item[0]):
+                            address_bport = (str(item[1]), int(item[2]))
+                    print(address_bport)
+                    self.create_udp_send_socket()
+                    self.create_udp_recv_socket(address_bport)
+                    while True:
+                        try:
+                            self.udp_send(address_bport)
+                            self.udp_recv()
+                        except Exception as msg:
+                            print(msg)
+                        except KeyboardInterrupt:
+                            print()          
             except (KeyboardInterrupt, EOFError):
                 print()
                 print("Closing server connection ...")
                 self.socket.close()
                 sys.exit(1)
+
+    def udp_send(self, address_bport):
+        try:
+            sendmsg = input("Message to send: ")
+            message = self.username + ": " + sendmsg
+            self.s_socket.sendto(message.encode("utf-8"), address_bport)
+        except Exception as msg:
+            print(msg)
+        except KeyboardInterrupt:
+            print(); exit()
+    
+    def udp_recv(self):
+        try:
+            # Receive and print out text. The received bytes objects
+            # must be decoded into string objects.
+            recvd_bytes, address = self.r_socket.recvfrom(Client.RECV_SIZE)
+            #print(recvd_bytes)
+            recvd_bytes_decoded = recvd_bytes.decode("utf-8")
+            #print(recvd_bytes_drecoded)
+            # recv will block if nothing is available. If we receive
+            # zero bytes, the connection has been closed from the
+            # other end. In that case, close the connection on this
+            # end and exit.
+            if len(recvd_bytes) == 0:
+                print("Closing server connection ... ")
+                self.r_socket.close()
+                sys.exit(1)
+            
+            print(recvd_bytes_decoded)
+
+        except Exception as msg:
+            print(msg)
+            sys.exit(1)
                 
     def connection_send(self, input_text):
         try:
@@ -240,6 +324,7 @@ class Client:
             sys.exit(1)
     
     def connection_receive(self, input_id):
+        self.chatroom_list = []
         try:
             # Receive and print out text. The received bytes objects
             # must be decoded into string objects.
@@ -253,6 +338,7 @@ class Client:
 
             if (input_id[0] == "getdir"):
                 print("Received: ", recvd_bytes_decoded)
+                self.chatroom_list = recvd_bytes_decoded
                 
         except Exception as msg:
             print("Hi I break here")
