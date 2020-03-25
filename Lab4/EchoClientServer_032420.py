@@ -150,6 +150,7 @@ class Client:
     TTL_BYTE = TTL.to_bytes(TTL_SIZE, byteorder='big')
 
     def __init__(self):
+        self.thread_list_c = []
         self.get_socket()
         self.send_console_input_forever()
 
@@ -178,27 +179,26 @@ class Client:
             if self.input_text != '':
                 break
     
-    def create_udp_send_socket(self):
+    def create_udp_send_socket(self, address_bport):
         try:
-            self.s_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             #self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            self.s_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, Client.TTL_BYTE)
+            self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, Client.TTL_BYTE)
             # self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, Client.TTL)  # this works fine too
-            # self.socket.bind(("192.168.2.37", 0))  # This line may be needed.
         except Exception as msg:
             print(msg)
             sys.exit(1)
     
     def create_udp_recv_socket(self, address_bport):
         try:
-            self.r_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.r_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
             # Bind to an address/port. In multicast, this is viewed as
             # a "filter" that determines what packets make it to the
             # UDP app.
             bind_address = (Client.SERVER_HOSTNAME, address_bport[1])
-            self.r_socket.bind(bind_address)
+            self.socket.bind(bind_address)
             print("Chat Room Directory Server listening on port ", address_bport[1])
             ############################################################
             # The multicast_request must contain a bytes object
@@ -225,10 +225,27 @@ class Client:
 
             # Issue the Multicast IP Add Membership request.
             print("Adding membership (address/interface): ", address_bport[0],"/", RX_IFACE_ADDRESS)
-            self.r_socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, multicast_request)
+            self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, multicast_request)
         except Exception as msg:
             print(msg)
             sys.exit(1)
+
+    def udp_handler(self, address_bport):
+        self.udp_send(address_bport)
+        udp_thread = threading.Thread(target=self.udp_handler,
+                                    args=(address_bport,))
+        #Start the new thread running.
+        udp_thread.start()
+        
+        while True:
+            try:
+                self.udp_recv()
+            except Exception as msg:
+                print(msg)
+            except KeyboardInterrupt:
+                print(); exit()
+                # self.socket.close()
+                # self.send_console_input_forever()
     
     def send_console_input_forever(self):
         while True:
@@ -247,6 +264,7 @@ class Client:
                 elif(input_id[0] == "name"):
                     print("User chat name is set")
                     self.username = input_id[1]
+
                 elif(input_id[0] == "getdir"):
                     getdir_info = json.dumps(input_id)
                     self.connection_send(getdir_info)
@@ -264,54 +282,68 @@ class Client:
                         if (input_id[1] == item[0]):
                             address_bport = (str(item[1]), int(item[2]))
                     print(address_bport)
-                    self.create_udp_send_socket()
+                    self.create_udp_send_socket(address_bport)
                     self.create_udp_recv_socket(address_bport)
+                    msg = self.username + " has joined the chat."
+                    self.socket.sendto(msg.encode("utf-8"), address_bport)
+                    
+                    udp_thread = threading.Thread(target=self.udp_handler,
+                                                args=(address_bport,))
+                    # Start the new thread running.
+                    udp_thread.start()
+
                     while True:
                         try:
-                            self.udp_send(address_bport)
                             self.udp_recv()
                         except Exception as msg:
                             print(msg)
                         except KeyboardInterrupt:
-                            print()          
+                            # self.socket.close()
+                            # self.send_console_input_forever()
+                            print(); exit()
+            
+                else: 
+                    pass
             except (KeyboardInterrupt, EOFError):
                 print()
                 print("Closing server connection ...")
                 self.socket.close()
-                sys.exit(1)
+                sys.exit()
 
     def udp_send(self, address_bport):
         try:
-            sendmsg = input("Message to send: ")
+            sendmsg = input("Message to send: \n")
             message = self.username + ": " + sendmsg
-            self.s_socket.sendto(message.encode("utf-8"), address_bport)
+            self.socket.sendto(message.encode("utf-8"), address_bport)
         except Exception as msg:
             print(msg)
         except KeyboardInterrupt:
             print(); exit()
+            # self.socket.close()
+            # self.send_console_input_forever()
+            
     
     def udp_recv(self):
         try:
             # Receive and print out text. The received bytes objects
             # must be decoded into string objects.
-            recvd_bytes, address = self.r_socket.recvfrom(Client.RECV_SIZE)
-            #print(recvd_bytes)
+            recvd_bytes, address = self.socket.recvfrom(Client.RECV_SIZE)
             recvd_bytes_decoded = recvd_bytes.decode("utf-8")
-            #print(recvd_bytes_drecoded)
             # recv will block if nothing is available. If we receive
             # zero bytes, the connection has been closed from the
             # other end. In that case, close the connection on this
             # end and exit.
             if len(recvd_bytes) == 0:
                 print("Closing server connection ... ")
-                self.r_socket.close()
+                self.socket.close()
                 sys.exit(1)
-            
             print(recvd_bytes_decoded)
-
         except Exception as msg:
             print(msg)
-            sys.exit(1)
+        except KeyboardInterrupt:
+            print(); exit()
+            # self.socket.close()
+            # self.send_console_input_forever()
                 
     def connection_send(self, input_text):
         try:
