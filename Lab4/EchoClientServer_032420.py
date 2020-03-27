@@ -313,9 +313,8 @@ class Client:
         try:
             # sendmsg = input(self.username + ": ")
             sendmsg = input('')
-            if (sendmsg == "^]"):
-                #message = "^]"
-                #self.udp_socket.sendto(message.encode("utf-8"), address_bport)
+            sendmsg_encode = sendmsg.encode('ASCII')
+            if (sendmsg_encode == b'\x1d'):
                 self.flag_start = False
                 self.get_socket()
                 self.connect_to_server()
