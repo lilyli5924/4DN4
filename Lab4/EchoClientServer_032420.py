@@ -287,18 +287,19 @@ class Client:
                         if (input_id[1] == item[0]):
                             address_bport = (str(item[1]), int(item[2]))
                     print(address_bport)
+                    self.flag_start = True
                     # self.create_udp_send_socket(address_bport)
                     if (self.flag_start):
                         self.create_udp_recv_socket(address_bport)
-                    else:
-                        self.flag_start = True
-                    msg = self.username + " has joined the chat."
-                    self.udp_socket.sendto(msg.encode("utf-8"), address_bport)
-                    udp_thread = threading.Thread(target=self.udp_handler,
+                    #else:
+                    #self.flag_start = True
+                        msg = self.username + " has joined the chat."
+                        self.udp_socket.sendto(msg.encode("utf-8"), address_bport)
+                        udp_thread = threading.Thread(target=self.udp_handler,
                                                 args=(address_bport,))
                     # Start the new thread running.
-                    udp_thread.start()
-                    self.udp_recv()
+                        udp_thread.start()
+                        self.udp_recv()
 
                 else: 
                     pass
@@ -312,13 +313,14 @@ class Client:
         try:
             # sendmsg = input(self.username + ": ")
             sendmsg = input('')
-            if (sendmsg == "/exit"):
-                # message = "/exit"
-                # self.udp_socket.sendto(message.encode("utf-8"), address_bport)
+            if (sendmsg == "^]"):
+                #message = "^]"
+                #self.udp_socket.sendto(message.encode("utf-8"), address_bport)
                 self.flag_start = False
                 self.get_socket()
                 self.connect_to_server()
                 self.send_console_input_forever()
+                self.udp_socket.close()
             else:
                 message = self.username + ":" + sendmsg
                 self.udp_socket.sendto(message.encode("utf-8"), address_bport)
@@ -345,8 +347,15 @@ class Client:
                     print("Closing server connection ... ")
                     self.udp_socket.close()
                     sys.exit(1)
-
-                print(recvd_bytes_decoded)    
+                #if(recvd_bytes_decoded == "/exit"):
+                #    self.flag_start = False
+                #    self.get_socket()
+                #    self.connect_to_server()
+                #    self.send_console_input_forever()
+                #    self.udp_socket.close()
+                #else:
+                if(self.flag_start):
+                    print(recvd_bytes_decoded)    
                 
             except Exception as msg:
                 print(msg)
